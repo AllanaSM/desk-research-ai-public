@@ -1,37 +1,41 @@
-﻿# Production-like Compose configuration for the Anketka monitor.
-# Coolify supplies SERVICE_* values; TELEGRAM_TOKEN is configured as a secret.
+# Whole system in one resource: database, worker and bot.
+# Coolify fills the SERVICE_* values itself; you only set TELEGRAM_TOKEN and OPENROUTER_API_KEY.
+# The daily collection is a scheduled task in the worker container: python main.py collector
 services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_USER: ${SERVICE_USER_POSTGRES:-anketka}
-      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES:?Set SERVICE_PASSWORD_POSTGRES}
-      POSTGRES_DB: anketka_monitor
+      - POSTGRES_USER=${SERVICE_USER_POSTGRES}
+      - POSTGRES_PASSWORD=${SERVICE_PASSWORD_POSTGRES}
+      - POSTGRES_DB=desk_research
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d desk_research"]
       interval: 5s
       timeout: 5s
       retries: 20
 
-  bot:
+  worker:
     build: .
     environment:
-      BLOCK: bot
-      DATABASE_URL: postgresql://${SERVICE_USER_POSTGRES:-anketka}:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/anketka_monitor
-      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN:?Set TELEGRAM_TOKEN}
-      PORT: 8080
+      - BLOCK=worker
+      - DATABASE_URL=postgresql://${SERVICE_USER_POSTGRES}:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/desk_research
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - MODEL=${MODEL:-anthropic/claude-haiku-5.5}
     depends_on:
       postgres:
         condition: service_healthy
 
-  collector:
-    profiles: ["collector"]
+  bot:
     build: .
     environment:
-      BLOCK: collector
-      DATABASE_URL: postgresql://${SERVICE_USER_POSTGRES:-anketka}:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/anketka_monitor
+      - SERVICE_FQDN_BOT_8080
+      - BLOCK=bot
+      - PORT=8080
+      - DATABASE_URL=postgresql://${SERVICE_USER_POSTGRES}:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/desk_research
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - MINI_APP_URL=${SERVICE_FQDN_BOT}
     depends_on:
       postgres:
         condition: service_healthy

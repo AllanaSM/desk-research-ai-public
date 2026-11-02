@@ -6,4 +6,3 @@ __pycache__
 .DS_Store
 props
 db/.ruff_cache
-data
